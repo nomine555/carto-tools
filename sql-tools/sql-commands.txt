@@ -1,0 +1,9 @@
+# Listar todas las bases de datos
+EXEC sp_databases
+
+# Seleccionar Base de datos
+USE Aces
+
+# Listar todas las tablas
+SELECT * FROM INFORMATION_SCHEMA.TABLES 
+
