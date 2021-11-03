@@ -12,9 +12,9 @@ select     top 55
            CONVERT(VARCHAR(9),RFTime.First_RF) AS rf_start,
            CONVERT(VARCHAR(9),RFTime.Last_RF) AS rf_end,
 	   CONVERT(VARCHAR(9),Points2.Last_Point) AS validation_end,
-	   CONVERT(VARCHAR(9),RFTime.TotalRF) AS TotalRF,
-	   CONVERT(VARCHAR(9),RFTime.MeanRF) AS MeanRF,
-	   CONVERT(VARCHAR(9),RFTime.numRF) AS numRF,
+	   CONVERT(VARCHAR(9),RFTime.TotalRFTime) AS TotalRFTime,
+	   CONVERT(VARCHAR(9),RFTime.MeanRFTime) AS MeanRFTime,
+	   CONVERT(VARCHAR(9),RFTime.numRFs) AS numRFs,
  	   CONVERT(VARCHAR(9),RFForce.CF_MEAN) AS meanForce,
            CONVERT(VARCHAR(9),RFForce.CF_STD) AS stdForce,
 	   CONVERT(VARCHAR(9),Aces.dbo.PROCEDURES_TABLE.NAME) AS CASETYPE,
@@ -47,20 +47,32 @@ LEFT JOIN
 ) AS Points2
 ON Points2.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
 LEFT JOIN
-( select   Aces.dbo.STUDIES_TABLE.STUDY_IDX, 
-           CAST(CAST(MIN(Aces.dbo.RF_TABLE.ABLATION_START_TIME) AS Datetime)AS Time(0)) AS First_RF,
-       	   CAST(CAST(MAX(Aces.dbo.RF_TABLE.ABLATION_START_TIME) AS Datetime)AS Time(0)) AS Last_RF,
-           SUM(Aces.dbo.RF_TABLE.RF_TIME/1000)/60 AS TotalRF,
-	   AVG(Aces.dbo.RF_TABLE.RF_TIME)/1000 AS MeanRF,
-	   COUNT(Aces.dbo.RF_TABLE.RF_TIME) AS numRF
+
+(
+SELECT  IDX, 
+        CAST(CAST(MIN(STARTTIME) AS Datetime)AS Time(0)) AS First_RF,
+        CAST(CAST(MAX(STARTTIME) AS Datetime)AS Time(0)) AS Last_RF,
+        SUM(RFTIME/1000)/60 AS TotalRFTime,
+	     AVG(RFTIME)/1000 AS MeanRFTime,
+	     COUNT(RFTIME) AS numRFs
+FROM 
+(
+select DISTINCT 
+           Aces.dbo.STUDIES_TABLE.STUDY_IDX AS IDX, 
+			  Aces.dbo.RF_TABLE.RF_IDX, 
+			  Aces.dbo.RF_TABLE.RF_TIME AS RFTIME, 
+			  Aces.dbo.RF_TABLE.ABLATION_START_TIME AS STARTTIME
   from     Aces.dbo.STUDIES_TABLE,
            Aces.dbo.MAPS_TABLE,
 	       Aces.dbo.RF_TABLE
   where    Aces.dbo.STUDIES_TABLE.STUDY_IDX = Aces.dbo.MAPS_TABLE.STUDY_IDX
   and	   Aces.dbo.RF_TABLE.MAP_IDX = Aces.dbo.MAPS_TABLE.MAP_IDX
-  group by Aces.dbo.STUDIES_TABLE.STUDY_IDX
+) AS RFLIST
+group by IDX
+
+
 ) AS RFTime
-ON RFTime.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
+ON RFTime.IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
 LEFT JOIN
 (
 SELECT DISTINCT(Aces.dbo.STUDIES_TABLE.STUDY_IDX), CONFIG_MAIN_TABLE.PROCEDURE_IDX AS ptype,
