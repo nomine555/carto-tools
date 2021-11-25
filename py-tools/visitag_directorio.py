@@ -1,7 +1,6 @@
 ﻿import os
 import re
 import subprocess
-from shutil import copyfile
 import configparser
 
 import numpy as np
@@ -12,6 +11,12 @@ from scipy.spatial.distance import cdist
 from scipy.sparse.csgraph import shortest_path
 import sklearn.cluster as cluster
 
+import scipy.stats as st
+
+# returns confidence interval of mean
+def confIntMean(a, conf=0.95):
+  mean, sem, m = np.mean(a), st.sem(a), st.t.ppf((1+conf)/2., len(a)-1)
+  return mean - m*sem, mean + m*sem
 
 # Funciones auxiliares #
 ########################
@@ -125,14 +130,14 @@ def trayecto(zona, dfn):
 
 
     # Dibujamos el recorrido    
-
-''' dfz = dfn[dfn['Site'] == zona];
+    
+    dfz = dfn[dfn['Site'] == zona];
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(dfz['X'].to_numpy(),dfz['Y'].to_numpy(),dfz['Z'].to_numpy(), c = dfz['Color'].to_numpy())
     ax.set_title(zona + " " + dir_paciente.replace("\DIL-Navarra\Patient ","").replace("..\\","") )
     plt.show()
-'''
+    
 
 def segmenta(dfn, N):
     
@@ -169,7 +174,7 @@ def segmenta(dfn, N):
         for index, row in dfn.iterrows(): 
             dfn.at[index,'Site']  = "z" + str(labels[index])
             dfn.at[index,'Color'] = labels[index]
-             
+                
     # Mostramos las secciones. 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -177,10 +182,12 @@ def segmenta(dfn, N):
     ax.scatter(dfn['X'].to_numpy(),dfn['Y'].to_numpy(),dfn['Z'].to_numpy(), c = dfn['Color'].to_numpy())
     plt.draw()
     plt.pause(1)
-       
+          
     return dfn
 
-def procesa(dir_paciente, dfResumen, dfTotal, dfRfs):
+def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
+    
+    global dfx;
       
  # Cargamos los datos
            
@@ -201,7 +208,7 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs):
         del df2
     except:
         print('Error procesando: ' + input_file)
-        return dfResumen, dfTotal, dfRfs
+        return dfResumen, dfTotal, dfRfs, dflistado
        
     if (confirm):
         userInput = segmentos
@@ -212,19 +219,37 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs):
             except Exception as e: 
                 print("Error con la segmentación Automática")
                 print(e)
-                return dfResumen, dfTotal, dfRfs            
-            userInput = input("Enter para aceptar segmentación, N + Enter para cancelar, para probar con otro número de secciones (1,2,3..)? ");
+                dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
+                return dfResumen, dfTotal, dfRfs, dflistado            
+            userInput = input("Enter para aceptar segmentación, (N/R) + Enter para cancelar, para probar con otro número de secciones (1,2,3..)? ");
             if (userInput == "N"):
-                return dfResumen, dfTotal, dfRfs            
+                dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
+                return dfResumen, dfTotal, dfRfs, dflistado 
+            elif (userInput == "R"):
+                dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'R'}, ignore_index=True)
+                return dfResumen, dfTotal, dfRfs, dflistado
     else:
         try:
             dfn = segmenta(dfn,int(segmentos))
         except:
             print("Error con la segmentación Automática")
-            return dfResumen, dfTotal, dfRfs            
+            dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
+            return dfResumen, dfTotal, dfRfs, dflistado            
+        
+    # Contamos Visitags totales
+    visitags_totales = len(dfn.index)
     
     # Descartamos los elementos por Ablation Index
-    dfn = dfn[dfn['RFIndex'] > int(tagindex)]
+    dfnd = dfn[dfn['RFIndex'] > int(tagindex)]
+    
+    # Descartamos los elementos por Impedancia
+    dfnd = dfn[dfn['RFIndex'] > int(tagindex)]
+    
+    # Contamos Visitags mayor tagindex
+    visitags_cumplen = len(dfnd.index)
+    
+    # Descartamos los elementos por Ablation Index
+    dfn = dfn[dfn['RFIndex'] > int(tagindexd)]   
     
     # Miramos cuantas secciones hay
     elementos = dfn['Site'].value_counts().index.tolist();
@@ -243,15 +268,38 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs):
                 dfn.loc[(dfn['Seq'] == row['Seq']) & (dfn['Site'] == row['Site']), ['Distancia']] = d[0][0]          
     except:
         print("Error calculando trayecto")
-        return dfResumen, dfTotal, dfRfs
+        dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
+        return dfResumen, dfTotal, dfRfs, dflistado
         
   
     if ('Distancia' in dfn.columns):
         
+        dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'Si'}, ignore_index=True)
+        
         # Calculamos el resumen de datos
         for zona in elementos:           
             dfx = dfn[dfn['Site'] == zona]
-
+            
+            visitags_secuencia    = dfx[dfx.Seq > 0].shape[0]
+            visitags_gaps_55      = dfx[dfx.Distancia > 6].shape[0]
+            visitags_gaps_6       = dfx[dfx.Distancia > 6].shape[0]
+            visitags_gaps_65      = dfx[dfx.Distancia > 6].shape[0]
+            visitags_totales_zona = len(dfx.index)
+            # Contamos los que cumplen en zona
+            dfxd = dfx[dfx['RFIndex'] > int(tagindex)]
+            visitags_cumplen_zona = len(dfxd.index)
+                
+            # Intervalos de confianza          
+            try:
+                dfmm =  dfx[dfx["Distancia"] > 0]
+                data = dfmm["Distancia"].to_numpy()
+                intervalo95 = confIntMean(data, conf=0.99)
+                intervalo90 = confIntMean(data, conf=0.95)
+                intervalo85 = confIntMean(data, conf=0.90)
+            except:
+                print('Error con los intervalos de confianza')     
+    
+            
             print()
             print(zona)
             print('---------')
@@ -263,8 +311,20 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs):
                        'Distancia Media ':    dfx['Distancia'].mean(),
                        'Distancia Mediana ':  dfx['Distancia'].median(),
                        'Desviacion estandar ':dfx['Distancia'].std(),
-                       'Distancia maxima ':   dfx['Distancia'].max() }
-            dfResumen  = dfResumen.append(newline, ignore_index=True)
+                       'Distancia maxima ':   dfx['Distancia'].max(), 
+                       '# Visitags': visitags_totales,         
+                       '# Visitags >300' : visitags_cumplen,  
+                       '# Visitags en Zona': visitags_totales_zona, 
+                       '# Visitags en Zona >300' : visitags_cumplen_zona,                       
+                       '# Visitags en Zona y linea': visitags_secuencia,
+                       '# Gaps >5,5': visitags_gaps_55,
+                       '# Gaps >6': visitags_gaps_6,
+                       '# Gaps >6,5': visitags_gaps_65,
+                       '# 99%': intervalo95, 
+                       '# 95%': intervalo90, 
+                       '# 90%': intervalo85}            
+            
+            dfResumen  = dfResumen.append(newline, ignore_index=True)        
         
             if ((zona.upper() == "DER") or (zona.upper() == "IZQ") or (zona == "z0") or (zona == "z1") ):               
                 col = dir_paciente.replace(rootdir,"") + "_" + zona.upper()
@@ -274,12 +334,13 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs):
     else:
         
         print("Error calculando trayecto")
-        return dfResumen, dfTotal, dfRfs      
+        dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
+        return dfResumen, dfTotal, dfRfs, dflistado      
                         
     # Exportamos a csv.
     dfRfs = pd.concat([dfRfs, dfn])
     dfn.to_csv(output_file,sep = ';', decimal=',');
-    return dfResumen, dfTotal, dfRfs
+    return dfResumen, dfTotal, dfRfs, dflistado
 
 #############################################################################
 # INICIO DE PROGRAMA
@@ -292,6 +353,7 @@ config.read('visitag.ini')
 rootdir      = config['DEFAULT']['Carpeta_Origen']
 dstdir       = config['DEFAULT']['Carpeta_Destino']
 tagindex     = config['DEFAULT']['Ablation_Index']
+tagindexd    = config['DEFAULT']['Ablation_Index_Discard']
 Study_Name   = config['DEFAULT']['Study_Name']
 segmentos    = config['DEFAULT']['Segmentos']
 
@@ -331,11 +393,14 @@ dstdir       = "..\\..\\Estudios\\"
 resumefile   = dstdir + "per-tag-statics.csv"
 alldatafile  = dstdir + "alldata.csv"
 allrfsfile   = dstdir + "allrfs.csv"
+procesfiles  = dstdir + "procesed.csv"
+
 subdir       = '\\Studies\\'
 datadir      = '\\RawData\\'
 mapsdir      = '\\Maps\\'
 patientdata  = '\\Label.INI'
 lista_pacientes = [];
+dflistado = pd.DataFrame([], columns = ['directorio','procesado'])
 
 if (rootdir      == "F:\\CartoData\\Patients\\"):
 #if (rootdir      == "F:\\"):    
@@ -358,7 +423,9 @@ if (rootdir      == "F:\\CartoData\\Patients\\"):
                                 try:
                                     if(not os.path.isdir(dstdir + finaldir)):                                            
                                         os.mkdir(dstdir + finaldir)
-                                    lista_pacientes.append(dstdir + finaldir)                                                                                                                   
+                                    lista_pacientes.append(dstdir + finaldir)
+                                    # dflistado = dflistado.append({'directorio' : finaldir}, ignore_index=True)
+                                    
                                 except:
                                     print('Error Creando directorio')                        
                                 try:
@@ -372,22 +439,31 @@ if (rootdir      == "F:\\CartoData\\Patients\\"):
 else: 
     for paciente in os.listdir(rootdir):
         item = os.path.join(rootdir, paciente)        
-        lista_pacientes.append(item)                                                                                                                   
+        lista_pacientes.append(item)                                                                            
+        # dflistado = dflistado.append({'directorio' : item, 'procesado' : 'Si'}, ignore_index=True)                                       
 
 if (procesar):
     print("Procesando visitags...")                                 
     # Data Frame resumen
-    dfResumen = pd.DataFrame([], columns = ['file','zona','Distancia Media ','Distancia Mediana ','Desviacion estandar ','Distancia maxima '])
+    dfResumen = pd.DataFrame([], columns = ['file','zona','Distancia Media ',
+                                            'Distancia Mediana ','Desviacion estandar ','Distancia maxima ',
+                                            '# Visitags','# Visitags >300',
+                                            '# Visitags en Zona','# Visitags en Zona >300', '# Visitags en Zona y linea',
+                                            '# Gaps >5,5', '# Gaps >6','# Gaps >6,5',
+                                            '# 99%', '# 95%','# 90%'])
+                      
     dfTotal = pd.DataFrame([], columns = [])                                       
     dfRfs   = pd.DataFrame([], columns = [])  
 
     for dir_paciente in lista_pacientes:
         print(dir_paciente)
         if (os.path.isfile(dir_paciente + '\\Sites.txt')):
-            dfResumen, dfTotal, dfRfs = procesa(dir_paciente, dfResumen, dfTotal, dfRfs)
+            dfResumen, dfTotal, dfRfs, dflistado = procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado)
         
     dfResumen.to_csv(resumefile, sep = ';', decimal=',');
     dfTotal.to_csv(alldatafile, sep = ';', decimal=',');
     dfRfs.to_csv(allrfsfile, sep = ';', decimal=',');
+    dflistado.to_csv(procesfiles, sep = ';', decimal=',');
+    
 
 #userInput = input("Fin del script... ");
