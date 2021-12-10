@@ -1,4 +1,5 @@
 ﻿import os
+from distutils.dir_util import copy_tree
 import re
 import subprocess
 import configparser
@@ -7,17 +8,46 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt 
 
+from mpl_toolkits.mplot3d.proj3d import proj_transform
+from matplotlib.text import Annotation
+
 from scipy.spatial.distance import cdist
 from scipy.sparse.csgraph import shortest_path
 import sklearn.cluster as cluster
 
 import scipy.stats as st
+from tkinter import Tk
+from tkinter import messagebox
+
+import configparser
 
 # returns confidence interval of mean
 def confIntMean(a, conf=0.95):
   mean, sem, m = np.mean(a), st.sem(a), st.t.ppf((1+conf)/2., len(a)-1)
   return mean - m*sem, mean + m*sem
 
+
+# Funciones para ver etiquetas en 3D
+#############################################
+class Annotation3D(Annotation):
+    '''Annotate the point xyz with text s'''
+
+    def __init__(self, s, xyz, *args, **kwargs):
+        Annotation.__init__(self,s, xy=(0,0), *args, **kwargs)
+        self._verts3d = xyz        
+
+    def draw(self, renderer):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, zs = proj_transform(xs3d, ys3d, zs3d, self.axes.M)
+        self.xy=(xs,ys)
+        Annotation.draw(self, renderer)
+        
+def annotate3D(ax, s, *args, **kwargs):
+    '''add anotation text s to to Axes3d ax'''
+
+    tag = Annotation3D(s, *args, **kwargs)
+    ax.add_artist(tag)       
+        
 # Funciones auxiliares #
 ########################
 
@@ -42,12 +72,16 @@ def f(x):
      
 def trayecto(zona, dfn):
     
+    global color
+    
     # Cogemos la zona, y una matriz X, Y, Z
     dfz = dfn[dfn['Site'] == zona];
     puntos = dfz[['X','Y','Z']];   
     if(len(puntos) < 2):
         return
     
+    #dfn['Color'] = 1; 
+        
     # Calculamos la distancia de todos con todos
     distancias = cdist(puntos, puntos);     
  
@@ -57,9 +91,9 @@ def trayecto(zona, dfn):
     fin    = m[1]
     
     # Del primer punto de ablación al más alejado de este
-    inicio = 0
-    dd = distancias[0]
-    fin = np.where(dd == np.amax(dd))[0][0]
+    #inicio = 0
+    #dd = distancias[0]
+    #fin = np.where(dd == np.amax(dd))[0][0]
     
     # Elevar la distancia al cuadrado o al cubo, para que merezca la pena pasar por los puntos intermedios. 
     # Tenemos que poner distancia infinita si esta por encima de 8mm
@@ -86,13 +120,13 @@ def trayecto(zona, dfn):
     ''' 
       
     camino = get_path(predecessors, inicio, fin);
-    
+    color = color + 1
     # Si es mayor que 1
     # Asignamos el valor de la secuencia. 
     n = 1;
     for index in camino:  
         dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Seq']] = n;   
-        dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Color']] = 1;                  
+        dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Color']] = color;                  
         n = n + 1;
     n = n - 1;
  
@@ -121,27 +155,17 @@ def trayecto(zona, dfn):
     dist_matrix, predecessors = shortest_path(csgraph=distancias, directed=True, return_predecessors = True, method = 'FW') 
     camino = get_path(predecessors, fin, inicio);
     
+    color = color + 1
     if (len(camino) > 1):    
         print("Cierra camino de zona: ", zona)
         for index in camino:  
             dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Seq']] = n;
-            dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Color']] = 2;              
+            dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Color']] = color;              
             n = n + 1;    
-
-
-    # Dibujamos el recorrido    
     
-    dfz = dfn[dfn['Site'] == zona];
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(dfz['X'].to_numpy(),dfz['Y'].to_numpy(),dfz['Z'].to_numpy(), c = dfz['Color'].to_numpy())
-    ax.set_title(zona + " " + dir_paciente.replace("\DIL-Navarra\Patient ","").replace("..\\","") )
-    plt.show()
-    
-
 def segmenta(dfn, N):
     
-    global labels
+    global labels,color
     
     elementos = dfn['Comment'].value_counts().index.tolist();  
 
@@ -149,7 +173,7 @@ def segmenta(dfn, N):
     
         # Creamos las secciones en función de los comentarios y ponemos un color
         ultimo = "any"
-        color = 0
+       
         for index, row in dfn.iterrows():   
             if (pd.isnull(row['Comment'])):
                 dfn.at[index,'Site'] = ultimo
@@ -174,21 +198,14 @@ def segmenta(dfn, N):
         for index, row in dfn.iterrows(): 
             dfn.at[index,'Site']  = "z" + str(labels[index])
             dfn.at[index,'Color'] = labels[index]
-                
-    # Mostramos las secciones. 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.set_title("All points " + dir_paciente )
-    ax.scatter(dfn['X'].to_numpy(),dfn['Y'].to_numpy(),dfn['Z'].to_numpy(), c = dfn['Color'].to_numpy())
-    plt.draw()
-    plt.pause(1)
           
     return dfn
 
 def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
     
-    global dfx;
-      
+    global dfx, color;         
+    color = 1
+                 
  # Cargamos los datos
            
     input_file   = dir_paciente + "\\Sites.txt";
@@ -211,23 +228,45 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
         return dfResumen, dfTotal, dfRfs, dflistado
        
     if (confirm):
-        userInput = segmentos
+        nsegmentos = int(segmentos)
         
-        while (userInput.isdigit()):
+        while (True):
             try:
-                dfn = segmenta(dfn,int(userInput))
+                dfn = segmenta(dfn,nsegmentos)
+                # Mostramos las secciones. 
+                try:
+                    plt.close()   
+                except Exception as e:
+                    print(e)               
+                    
+                fig = plt.figure()
+                ax = fig.add_subplot(111, projection='3d')
+                ax.set_title("All points " + dir_paciente )
+                ax.scatter(dfn['X'].to_numpy(),dfn['Y'].to_numpy(),dfn['Z'].to_numpy(), c = dfn['Color'].to_numpy())
+                plt.draw()
+                plt.pause(1)
             except Exception as e: 
                 print("Error con la segmentación Automática")
                 print(e)
                 dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
+                plt.close()
                 return dfResumen, dfTotal, dfRfs, dflistado            
-            userInput = input("Enter para aceptar segmentación, (N/R) + Enter para cancelar, para probar con otro número de secciones (1,2,3..)? ");
-            if (userInput == "N"):
+            
+            question = messagebox.askyesnocancel(
+                  title="¿Aceptar Segmentación?",
+                  message="Si - Aceptar \nNo - Reintentar con más segmentos \nCancelar - Descartar",
+                  default=messagebox.YES)
+                       
+            if question:
+                break;
+            elif question is None:
                 dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
+                plt.close()
                 return dfResumen, dfTotal, dfRfs, dflistado 
-            elif (userInput == "R"):
-                dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'R'}, ignore_index=True)
-                return dfResumen, dfTotal, dfRfs, dflistado
+            else:
+                nsegmentos = nsegmentos + 1;
+                if (nsegmentos > 5):
+                    nsegmentos = 1
     else:
         try:
             dfn = segmenta(dfn,int(segmentos))
@@ -235,21 +274,23 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
             print("Error con la segmentación Automática")
             dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
             return dfResumen, dfTotal, dfRfs, dflistado            
-        
+    
+    plt.close()
+    # Descartamos los elementos con errores
+    dfn = dfn[dfn['RFIndex'] > 0]
+    dfn = dfn[dfn['ImpedanceDrop'] > 0]
+    dfn = dfn[dfn['MaxTemperature'] > 0]
+    dfn = dfn[dfn['MaxPower'] > 0]
+    
     # Contamos Visitags totales
     visitags_totales = len(dfn.index)
-    
-    # Descartamos los elementos por Ablation Index
-    dfnd = dfn[dfn['RFIndex'] > int(tagindex)]
-    
-    # Descartamos los elementos por Impedancia
-    dfnd = dfn[dfn['RFIndex'] > int(tagindex)]
-    
-    # Contamos Visitags mayor tagindex
+
+    # Contamos Visitags que cumplen tagindex
+    dfnd = dfn[dfn['RFIndex'] > int(tagindex)]    
     visitags_cumplen = len(dfnd.index)
-    
+
     # Descartamos los elementos por Ablation Index
-    dfn = dfn[dfn['RFIndex'] > int(tagindexd)]   
+    dfn = dfn[dfn['RFIndex'] > int(tagindexd)]
     
     # Miramos cuantas secciones hay
     elementos = dfn['Site'].value_counts().index.tolist();
@@ -258,12 +299,52 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
     for zona in elementos:   
         trayecto(zona,dfn);
 
+    # Dibujamos los trayectos            
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(dfn['X'].to_numpy(),dfn['Y'].to_numpy(),dfn['Z'].to_numpy(), c = dfn['Color'].to_numpy())
+    ax.set_title(zona + " " + dir_paciente.replace("\DIL-Navarra\Patient ","").replace("..\\","") )
+    
+    xyzn = zip(dfn['X'].to_numpy(),dfn['Y'].to_numpy(),dfn['Z'].to_numpy())
+    labels = dfn['Seq'].to_numpy()
+
+    for j, xyz_ in enumerate(xyzn): 
+        annotate3D(ax, s = str(labels[j]), xyz=xyz_, fontsize=10, xytext=(-3,3),
+        textcoords='offset points', ha='right',va='bottom')        
+    plt.draw()
+    plt.pause(1)
+
+    question = messagebox.askyesnocancel(
+                  title="¿Aceptar Secuencia de tags?",
+                  message="Si - Aceptar \nNo - Mandar para revisión \nCancelar - Descartar",
+                  default=messagebox.YES)
+    print(question)
+    if question:
+        plt.close()
+        print("Aceptado")
+    elif question is None:    
+        dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'R'}, ignore_index=True)
+        plt.close()
+        print("Descartado")
+        return dfResumen, dfTotal, dfRfs, dflistado       
+    else:
+        dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
+        plt.close()
+        print("copiar")
+        print(dir_paciente)    
+        print()
+        print(dstdir)
+        print("copiar-------------")
+        copy_tree(dir_paciente, dstdir +  "\\revision\\" + os.path.basename(os.path.normpath(dir_paciente)))
+        return dfResumen, dfTotal, dfRfs, dflistado 
+            
     # Calculamos las Distancias
     try:
         for index, row in dfn.iterrows():    
             p1 = dfn.loc[(dfn['Seq'] == row['Seq'])     & (dfn['Site'] == row['Site']), ['X','Y','Z']]
             p2 = dfn.loc[(dfn['Seq'] == row['Seq'] + 1) & (dfn['Site'] == row['Site']), ['X','Y','Z']]
-            d = cdist(p1,p2)
+            d = cdist(p1,p2)            
             if (d.size > 0):
                 dfn.loc[(dfn['Seq'] == row['Seq']) & (dfn['Site'] == row['Site']), ['Distancia']] = d[0][0]          
     except:
@@ -346,7 +427,8 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
 # INICIO DE PROGRAMA
 #############################################################################
 
-import configparser
+root = Tk()
+root.withdraw()
 
 config = configparser.ConfigParser()
 config.read('visitag.ini')
