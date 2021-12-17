@@ -59,109 +59,140 @@ def get_path(Pr, i, j):
         k = Pr[i, k]
     return path[::-1]
 
+
 def f(x): 
+    if (x > 6.5):
+        return np.inf
+    elif (x < 2):
+        return 0.00000000001
+    else:
+        return (x**50)
+
+def g(x): 
+    if (x > 8):
+        return np.inf
+    elif (x < 2):
+        return 0.00000000001
+    else:
+        return (x**50)
+
+def h(x): 
     if (x > 14):
         return np.inf
     elif (x < 2):
-        return 0.0000001
+        return 0.00000000001
     else:
         return (x**50)
+
 
 # Función que busca el trayecto utiliza las variables globales.
 # Trabaj sobre el dataframe dfn
      
-def trayecto(zona, dfn):
+def trayecto(zona, dfn, intento):
     
     global color
     
-    # Cogemos la zona, y una matriz X, Y, Z
-    dfz = dfn[dfn['Site'] == zona];
-    puntos = dfz[['X','Y','Z']];   
-    if(len(puntos) < 2):
-        return
+    fdist = 0
     
-    #dfn['Color'] = 1; 
+    while (fdist <= 3): 
+    #if(True):
+        dfn.loc[dfn['Site'] == zona, 'Seq'] = np.NaN
+        dfn.loc[dfn['Site'] == zona, 'Distancia'] = np.NaN
         
-    # Calculamos la distancia de todos con todos
-    distancias = cdist(puntos, puntos);     
- 
-    # Buscamos los puntos mas alejados
-    m,mm = np.where(distancias == np.amax(distancias))
-    inicio = m[0]
-    fin    = m[1]
+        # Cogemos la zona, y una matriz X, Y, Z        
+        dfz = dfn[dfn['Site'] == zona]        
+        puntos = dfz[['X','Y','Z']];   
+        if(len(puntos) < 2):
+            return
     
-    # Del primer punto de ablación al más alejado de este
-    #inicio = 0
-    #dd = distancias[0]
-    #fin = np.where(dd == np.amax(dd))[0][0]
+        #dfn['Color'] = 1; 
+        
+        # Calculamos la distancia de todos con todos
+        distancias = cdist(puntos, puntos);     
+        distancias_ord = np.sort(distancias.flatten())
+     
+        #m,mm = np.where(distancias == distancias_ord[len(distancias_ord) - intento*len(distancias_ord)//7 -1])    
+        if (intento == 0):
+            m,mm = np.where(distancias >= np.amax(distancias))    
+        else:
+            maximo = intento*np.amax(distancias)/6 + np.amax(distancias)/3
+            distancias_ord = distancias_ord[distancias_ord > maximo]
+            try:
+                print(distancias_ord[0])
+            except:                
+                return False
+            m,mm = np.where(distancias == distancias_ord[0])    
+            
+        inicio = m[0]
+        fin    = m[1]                    
     
-    # Elevar la distancia al cuadrado o al cubo, para que merezca la pena pasar por los puntos intermedios. 
-    # Tenemos que poner distancia infinita si esta por encima de 8mm
-    distancias = np.vectorize(f)(distancias)    
+        # Elevar la distancia al cuadrado o al cubo, para que merezca la pena pasar por los puntos intermedios. 
+        # Tenemos que poner distancia infinita si esta por encima de 8mm
+        #distancias = np.vectorize(f)(distancias)
     
-    # Buscamos los caminos más cortos    
-    dist_matrix, predecessors = shortest_path(csgraph=distancias, directed=True, return_predecessors = True, method = 'FW')
+        if (fdist % 3 == 0):           
+            distancias = np.vectorize(f)(distancias)   
+        elif(fdist % 3 == 1): 
+            distancias = np.vectorize(g)(distancias)  
+        else:
+            distancias = np.vectorize(h)(distancias)            
     
-    '''
-    # Buscamos un punto inicial en los comentarios
-    inicio = -1
-    n = 0
-    for index, row in dfz.iterrows():
-        if ( not pd.isnull(row['Comment']) and len(row['Comment'].split('-')) > 1):
-            if (row['Comment'].split('-')[1] == 'inicio'):
-                inicio = n;                
-            if (row['Comment'].split('-')[1] == 'fin'):
-                fin = n;
-        n = n + 1
-      
+        # Buscamos los caminos más cortos    
+        dist_matrix, predecessors = shortest_path(csgraph=distancias, directed=True, return_predecessors = True, method = 'FW')  
+        camino = get_path(predecessors, inicio, fin);
+        color = color + 1
 
-    # Si no hay punto inicial cogemos los dos puntos mas alejados. 
-    if (inicio == -1):
-    ''' 
-      
-    camino = get_path(predecessors, inicio, fin);
-    color = color + 1
-    # Si es mayor que 1
-    # Asignamos el valor de la secuencia. 
-    n = 1;
-    for index in camino:  
-        dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Seq']] = n;   
-        dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Color']] = color;                  
-        n = n + 1;
-    n = n - 1;
- 
-  #### Esto es para buscar el camino de vuelta en un bucle circular. ####
- 
-    # Borramos todos los puntos que hemos recorrido 
-    dfz = dfn[dfn['Site'] == zona]
-    
-    for index, row in dfz.iterrows():
-        if ( (row['Seq'] > 1) and (row['Seq'] < n ) ):
-            dfz = dfz.drop(index)
-                
-    # Cogemos el inicio y el fin para el camino de vuelta
-    p = -1
-    for index, row in dfz.iterrows():
-        p = p + 1     
-        if (row['Seq'] == 1):
-            inicio = p       
-        if (row['Seq'] == n):
-            fin = p                
-
-    # Y buscamos el camino de vuelta circular. 
-    puntos =  dfz[['X','Y','Z']];   
-    distancias = cdist(puntos, puntos);
-    distancias = np.vectorize(f)(distancias)    
-    dist_matrix, predecessors = shortest_path(csgraph=distancias, directed=True, return_predecessors = True, method = 'FW') 
-    camino = get_path(predecessors, fin, inicio);
-    
-    color = color + 1
-    if (len(camino) > 1):    
-        print("Cierra camino de zona: ", zona)
+        # Si es mayor que 1
+        # Asignamos el valor de la secuencia. 
+        n = 1;
         for index in camino:  
-            dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Seq']] = n;
-            dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Color']] = color;              
-            n = n + 1;    
+            dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Seq']] = n;   
+            dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Color']] = color;                  
+            n = n + 1;
+        n = n - 1;
+ 
+        # Esto es para buscar el camino de vuelta en un bucle circular. #
+        # Borramos todos los puntos que hemos recorrido 
+        dfz = dfn[dfn['Site'] == zona]
+    
+        for index, row in dfz.iterrows():
+            if ( (row['Seq'] > 1) and (row['Seq'] < n ) ):
+                dfz = dfz.drop(index)
+                
+        # Cogemos el inicio y el fin para el camino de vuelta
+        p = -1
+        for index, row in dfz.iterrows():
+            p = p + 1     
+            if (row['Seq'] == 1):
+                inicio = p       
+            if (row['Seq'] == n):
+                fin = p                
+
+        # Y buscamos el camino de vuelta circular. 
+        puntos =  dfz[['X','Y','Z']];   
+        distancias = cdist(puntos, puntos);
+    
+        if (fdist % 3 == 0):           
+            distancias = np.vectorize(f)(distancias) 
+        elif(fdist % 3 == 1): 
+            distancias = np.vectorize(g)(distancias)    
+        else:
+            distancias = np.vectorize(h)(distancias)     
+    
+        dist_matrix, predecessors = shortest_path(csgraph=distancias, directed=True, return_predecessors = True, method = 'FW') 
+        camino2 = get_path(predecessors, fin, inicio);
+    
+        color = color + 1
+        if (len(camino2) > 1):            
+            for index in camino2:  
+                dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Seq']] = n;
+                dfn.loc[dfn['SiteIndex'] == dfz.iloc[index,2], ['Color']] = color;              
+                n = n + 1; 
+                fdist = 10;
+        else:
+            print("No cierra camino la zona: ", zona)
+            fdist = fdist + 1;
+    return True
     
 def segmenta(dfn, N):
     
@@ -237,14 +268,14 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
                 try:
                     plt.close()   
                 except Exception as e:
-                    print(e)               
-                    
+                    print(e)                                   
                 fig = plt.figure()
                 ax = fig.add_subplot(111, projection='3d')
                 ax.set_title("All points " + dir_paciente )
                 ax.scatter(dfn['X'].to_numpy(),dfn['Y'].to_numpy(),dfn['Z'].to_numpy(), c = dfn['Color'].to_numpy())
                 plt.draw()
                 plt.pause(1)
+                
             except Exception as e: 
                 print("Error con la segmentación Automática")
                 print(e)
@@ -277,10 +308,11 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
     
     plt.close()
     # Descartamos los elementos con errores
-    dfn = dfn[dfn['RFIndex'] > 0]
-    dfn = dfn[dfn['ImpedanceDrop'] > 0]
-    dfn = dfn[dfn['MaxTemperature'] > 0]
-    dfn = dfn[dfn['MaxPower'] > 0]
+    if (not FTI):
+        dfn = dfn[dfn['RFIndex'] > 0]
+        dfn = dfn[dfn['ImpedanceDrop'] > 0]
+        dfn = dfn[dfn['MaxTemperature'] > 0]
+        dfn = dfn[dfn['MaxPower'] > 0]
     
     # Contamos Visitags totales
     visitags_totales = len(dfn.index)
@@ -290,68 +322,89 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
     visitags_cumplen = len(dfnd.index)
 
     # Descartamos los elementos por Ablation Index
-    dfn = dfn[dfn['RFIndex'] > int(tagindexd)]
+    if (not FTI):
+        dfn = dfn[dfn['RFIndex'] > int(tagindexd)]
+    else:
+        dfn = dfn[dfn['FTI'] > int(tagindexd)]
     
     # Miramos cuantas secciones hay
     elementos = dfn['Site'].value_counts().index.tolist();
     
     # Ejecutamos el algoritmo en cada zona
-    for zona in elementos:   
-        trayecto(zona,dfn);
+    intento = 0
+    while (True):
+                  
+        No_revisar = True
+        for zona in elementos:   
+            revisar = trayecto(zona,dfn,intento);
+            No_revisar = No_revisar and revisar;
 
-    # Dibujamos los trayectos            
+        # Calculamos las Distancias
+        try:
+            for index, row in dfn.iterrows():    
+                p1 = dfn.loc[(dfn['Seq'] == row['Seq'])     & (dfn['Site'] == row['Site']), ['X','Y','Z']]
+                p2 = dfn.loc[(dfn['Seq'] == row['Seq'] + 1) & (dfn['Site'] == row['Site']), ['X','Y','Z']]
+                d = cdist(p1,p2)            
+                if (d.size > 0):
+                    dfn.loc[(dfn['Seq'] == row['Seq']) & (dfn['Site'] == row['Site']), ['Distancia']] = d[0][0]          
+        except:
+            print("Error calculando trayecto")
+            dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
+            return dfResumen, dfTotal, dfRfs, dflistado
     
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(dfn['X'].to_numpy(),dfn['Y'].to_numpy(),dfn['Z'].to_numpy(), c = dfn['Color'].to_numpy())
-    ax.set_title(zona + " " + dir_paciente.replace("\DIL-Navarra\Patient ","").replace("..\\","") )
-    
-    xyzn = zip(dfn['X'].to_numpy(),dfn['Y'].to_numpy(),dfn['Z'].to_numpy())
-    labels = dfn['Seq'].to_numpy()
+        # Monstramos los datos    
+        for zona in elementos:           
+            dfx = dfn[dfn['Site'] == zona]
+            print()
+            print(zona)
+            print('---------')
+            print('Distancia Media ', dfx['Distancia'].mean()) 
+            print('Distancia maxima ',dfx['Distancia'].max()) 
+            print('Max Gap:', dfx.loc[dfx['Distancia'] == dfx['Distancia'].max(),'Seq']  )          
 
-    for j, xyz_ in enumerate(xyzn): 
-        annotate3D(ax, s = str(labels[j]), xyz=xyz_, fontsize=10, xytext=(-3,3),
-        textcoords='offset points', ha='right',va='bottom')        
-    plt.draw()
-    plt.pause(1)
+        # Dibujamos los trayectos            
+            
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_title(zona + " " + dir_paciente.replace("\DIL-Navarra\Patient ","").replace("..\\","") )
+        for zona in elementos:  
+            dfp = dfn[dfn['Site'] == zona]              
+            ax.scatter(dfp['X'].to_numpy(),dfp['Y'].to_numpy(),dfp['Z'].to_numpy(), label = zona)
+        
+        ax.legend()    
+        xyzn = zip(dfn['X'].to_numpy(),dfn['Y'].to_numpy(),dfn['Z'].to_numpy())
+        labels = dfn['Seq'].to_numpy()
 
-    question = messagebox.askyesnocancel(
+        for j, xyz_ in enumerate(xyzn): 
+            annotate3D(ax, s = str(labels[j]), xyz=xyz_, fontsize=10, xytext=(-3,3),
+                       textcoords='offset points', ha='right',va='bottom')        
+        plt.draw()
+        plt.pause(1)
+
+        question = messagebox.askyesnocancel(
                   title="¿Aceptar Secuencia de tags?",
                   message="Si - Aceptar \nNo - Mandar para revisión \nCancelar - Descartar",
                   default=messagebox.YES)
-    print(question)
-    if question:
-        plt.close()
-        print("Aceptado")
-    elif question is None:    
-        dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'R'}, ignore_index=True)
-        plt.close()
-        print("Descartado")
-        return dfResumen, dfTotal, dfRfs, dflistado       
-    else:
-        dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
-        plt.close()
-        print("copiar")
-        print(dir_paciente)    
-        print()
-        print(dstdir)
-        print("copiar-------------")
-        copy_tree(dir_paciente, dstdir +  "\\revision\\" + os.path.basename(os.path.normpath(dir_paciente)))
-        return dfResumen, dfTotal, dfRfs, dflistado 
+
+        if question:
+            plt.close()
+            print("Aceptado")
+            break
+        elif question is None:    
+            dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'R'}, ignore_index=True)
+            plt.close()
+            print("Descartado")
+            return dfResumen, dfTotal, dfRfs, dflistado       
+        else:
+            if(not No_revisar):
+                print("Para revisión")
+                dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)            
+                copy_tree(dir_paciente, dstdir +  "\\revision\\" + os.path.basename(os.path.normpath(dir_paciente)))
+                return dfResumen, dfTotal, dfRfs, dflistado 
+                break
+            plt.close()            
+            intento = intento + 1
             
-    # Calculamos las Distancias
-    try:
-        for index, row in dfn.iterrows():    
-            p1 = dfn.loc[(dfn['Seq'] == row['Seq'])     & (dfn['Site'] == row['Site']), ['X','Y','Z']]
-            p2 = dfn.loc[(dfn['Seq'] == row['Seq'] + 1) & (dfn['Site'] == row['Site']), ['X','Y','Z']]
-            d = cdist(p1,p2)            
-            if (d.size > 0):
-                dfn.loc[(dfn['Seq'] == row['Seq']) & (dfn['Site'] == row['Site']), ['Distancia']] = d[0][0]          
-    except:
-        print("Error calculando trayecto")
-        dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'No'}, ignore_index=True)
-        return dfResumen, dfTotal, dfRfs, dflistado
-        
   
     if ('Distancia' in dfn.columns):
         
@@ -362,9 +415,9 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
             dfx = dfn[dfn['Site'] == zona]
             
             visitags_secuencia    = dfx[dfx.Seq > 0].shape[0]
-            visitags_gaps_55      = dfx[dfx.Distancia > 6].shape[0]
+            visitags_gaps_55      = dfx[dfx.Distancia > 5.5].shape[0]
             visitags_gaps_6       = dfx[dfx.Distancia > 6].shape[0]
-            visitags_gaps_65      = dfx[dfx.Distancia > 6].shape[0]
+            visitags_gaps_65      = dfx[dfx.Distancia > 6.5].shape[0]
             visitags_totales_zona = len(dfx.index)
             # Contamos los que cumplen en zona
             dfxd = dfx[dfx['RFIndex'] > int(tagindex)]
@@ -378,14 +431,7 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
                 intervalo90 = confIntMean(data, conf=0.95)
                 intervalo85 = confIntMean(data, conf=0.90)
             except:
-                print('Error con los intervalos de confianza')     
-    
-            
-            print()
-            print(zona)
-            print('---------')
-            print('Distancia Media ', dfx['Distancia'].mean()) 
-            print('Distancia maxima ',dfx['Distancia'].max()) 
+                print('Error con los intervalos de confianza')         
         
             newline = {'file': input_file.replace(rootdir,"").replace("Sites.txt",""),
                        'zona': zona,
@@ -448,6 +494,11 @@ if (config['DEFAULT']['Solo_cargar_datos'] == "Si"):
     procesar     = False;
 else: 
     procesar      = True;    
+
+if (config['DEFAULT']['Usar FTI'] == "Si"):
+    FTI     = True;
+else: 
+    FTI     = False;    
 
 if (config['DEFAULT']['Cargar_desde_Carto'] == "Si"):
     rootdir      = "F:\\CartoData\\Patients\\"
@@ -549,3 +600,21 @@ if (procesar):
     
 
 #userInput = input("Fin del script... ");
+
+'''
+    # Buscamos un punto inicial en los comentarios
+    inicio = -1
+    n = 0
+    for index, row in dfz.iterrows():
+        if ( not pd.isnull(row['Comment']) and len(row['Comment'].split('-')) > 1):
+            if (row['Comment'].split('-')[1] == 'inicio'):
+                inicio = n;                
+            if (row['Comment'].split('-')[1] == 'fin'):
+                fin = n;
+        n = n + 1
+      
+
+    # Si no hay punto inicial cogemos los dos puntos mas alejados. 
+    if (inicio == -1):
+    ''' 
+    
