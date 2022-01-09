@@ -28,9 +28,6 @@ Here you have all the different directories:
     * Visitag.ini
         * The configuration of the previous script
 
-* Register-tools
-    * In order to get Task Manager Back.
-
 * Sql-tools
     * Lista-tiempos.bat
         * Uses all the “sql” scripts, list and sends to file, all the times and cases. 
@@ -49,4 +46,8 @@ It has three parts:
 
 ## Contacting me
 
-You may find me on linkedin Fernando Setien Dodero. 
+You can find me on linkedin, my name is Fernando Setien Dodero.  
+
+## Related projects
+
+This guys are working on something much bigger https://github.com/openep/
