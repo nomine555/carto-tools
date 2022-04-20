@@ -7,3 +7,27 @@ USE Aces
 # Listar todas las tablas
 SELECT * FROM INFORMATION_SCHEMA.TABLES 
 
+# Check system service
+systemctl status mssql-server
+systemctl enable mssql-server
+
+# Arrancar 
+sqlcmd -S localhost -U SA -P Aguaprofund2
+
+# Attach Base de datos
+CREATE DATABASE Aces   
+    ON (FILENAME ='/home/fernando/Documents/EmptyPack_Data.mdf'),   
+    (FILENAME = '/home/fernando/Documents/EmptyPack_Log.ldf')   
+    FOR ATTACH; 
+
+# Detach Database
+sp_detach_db 'Aces'   
+
+# Listar todas las bases de datos
+EXEC sp_databases
+
+# Seleccionar Base de datos
+USE Aces
+
+# Listar todas las tablas
+SELECT * FROM INFORMATION_SCHEMA.TABLES 

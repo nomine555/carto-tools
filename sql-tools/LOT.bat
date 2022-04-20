@@ -1,5 +1,5 @@
 @echo off
-mode 110, 25
+mode 120, 25
 
 sqlcmd -i lot.sql
 

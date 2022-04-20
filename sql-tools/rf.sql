@@ -1,36 +1,19 @@
 SET ANSI_NULLS on
 set QUOTED_IDENTIFIER  ON
-select     CONVERT(VARCHAR(5),Aces.dbo.STUDIES_TABLE.STUDY_IDX) StudyID,
- 	   CONVERT(VARCHAR(50),Aces.dbo.PATIENTS_TABLE.FIRST_NAME) NOMBRE,
-	   CONVERT(VARCHAR(50),Aces.dbo.PATIENTS_TABLE.LAST_NAME) APELLIDOS,
-	   CONVERT(VARCHAR(64),Aces.dbo.PATIENTS_TABLE.ID) NUMHIST,
-	   CONVERT(VARCHAR(10),CAST(CAST(Aces.dbo.STUDIES_TABLE.date -2 AS Datetime) AS Date)) AS Date,    
-           CONVERT(VARCHAR(30),Aces.dbo.SETUP_TABLE.NAME) Template,
-           CONVERT(VARCHAR(30),Aces.dbo.STUDIES_TABLE.NAME) StudyName, 
-           CONVERT(VARCHAR(30),Aces.dbo.STUDIES_TABLE.PHYSICIAN1) Physician,               
-           CONVERT(VARCHAR(33),Aces.dbo.STUDIES_TABLE.NOTES) Comments, 
-           CONVERT(VARCHAR(8),CAST(CAST(Aces.dbo.STUDIES_TABLE.START_TIME AS Datetime) AS Time)) AS carto_start,
-           CONVERT(VARCHAR(9),Points.First_Point) AS first_point,           
+select     top 3             
+	   CONVERT(VARCHAR(10),CAST(CAST(Aces.dbo.STUDIES_TABLE.date -2 AS Datetime) AS Date)) AS Date,                      
+           CONVERT(VARCHAR(8),CAST(CAST(Aces.dbo.STUDIES_TABLE.START_TIME AS Datetime) AS Time)) AS Carto_Start,
+           CONVERT(VARCHAR(9),Points.First_Point) AS map_start,           
            CONVERT(VARCHAR(9),RFTime.First_RF) AS rf_start,
            CONVERT(VARCHAR(9),RFTime.Last_RF) AS rf_end,
-	   CONVERT(VARCHAR(9),Points2.Last_Point) AS last_point,
- 	   CONVERT(VARCHAR(9),maps.end_map) AS carto_end,
-	   CAST(RFTime.TotalRFTime AS DECIMAL(10,2) ) AS TotalRFTime,
-	   CONVERT(VARCHAR(9),RFTime.MeanRFTime) AS MeanRFTime,
-	   CONVERT(VARCHAR(9),RFTime.numRFs) AS numRFs,
-	   CONVERT(VARCHAR(30),Aces.dbo.PROCEDURES_TABLE.NAME) AS CASETYPE,
-	   CONVERT(VARCHAR(3),CHARINDEX('SMARTTOUCH',Cath.names)) AS ST,
-	   CONVERT(VARCHAR(3),CHARINDEX('PENTARAY',Cath.names)) AS PENTA,
-	   CONVERT(VARCHAR(3),CHARINDEX('VIZIGO',Cath.names)) AS VIZIGO,
-	   CONVERT(VARCHAR(3),CHARINDEX('DECANAV',Cath.names)) AS DECANAV,
-	   CONVERT(VARCHAR(3),CHARINDEX('LASSO',Cath.names)) AS LASSO,
-	   CONVERT(VARCHAR(120),Cath.names) AS catheters
+	   CONVERT(VARCHAR(9),Points2.Last_Point) AS validation_end,
+	   CONVERT(VARCHAR(9),RFTime.TotalRF) AS TotalRF,
+	   CONVERT(VARCHAR(9),RFTime.numRF) AS numRF
 from       Aces.dbo.STUDIES_TABLE
-JOIN       Aces.dbo.SETUP_TABLE
+LEFT JOIN       Aces.dbo.SETUP_TABLE
 ON         Aces.dbo.SETUP_TABLE.SETUP_IDX = Aces.dbo.STUDIES_TABLE.SETUP_IDX
 LEFT JOIN	 Aces.dbo.PATIENTS_TABLE
 ON	   Aces.dbo.PATIENTS_TABLE.IDX = Aces.dbo.STUDIES_TABLE.PATIENT_IDX
-
 LEFT JOIN
 ( select   Aces.dbo.STUDIES_TABLE.STUDY_IDX,    
            CAST(CAST(MIN(Aces.dbo.POINTS_TABLE.ACQUISITION_TIME) AS Datetime)AS Time(0)) AS First_Point
@@ -42,17 +25,6 @@ LEFT JOIN
   group by Aces.dbo.STUDIES_TABLE.STUDY_IDX
 ) AS Points
 ON Points.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
-
-LEFT JOIN
-( select Aces.dbo.STUDIES_TABLE.STUDY_IDX, 
-	 CAST(CAST(MAX(Aces.dbo.MAPS_TABLE.LAST_MODIFIED) AS Datetime)AS Time(0)) AS end_map   
-from     Aces.dbo.STUDIES_TABLE,
-         Aces.dbo.MAPS_TABLE
-where    Aces.dbo.STUDIES_TABLE.STUDY_IDX = Aces.dbo.MAPS_TABLE.STUDY_IDX
-group by Aces.dbo.STUDIES_TABLE.STUDY_IDX
-) AS maps
-ON maps.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
-
 LEFT JOIN
 ( select   Aces.dbo.STUDIES_TABLE.STUDY_IDX,    
            CAST(CAST(MAX(Aces.dbo.POINTS_TABLE.ACQUISITION_TIME) AS Datetime)AS Time(0)) AS Last_Point
@@ -65,32 +37,20 @@ LEFT JOIN
 ) AS Points2
 ON Points2.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
 LEFT JOIN
-
-(
-SELECT  IDX, 
-        CAST(CAST(MIN(STARTTIME) AS Datetime)AS Time(0)) AS First_RF,
-        CAST(CAST(MAX(STARTTIME) AS Datetime)AS Time(0)) AS Last_RF,
-        SUM(RFTIME/1000)/60 AS TotalRFTime,
-	     AVG(RFTIME)/1000 AS MeanRFTime,
-	     COUNT(RFTIME) AS numRFs
-FROM 
-(
-select DISTINCT 
-           Aces.dbo.STUDIES_TABLE.STUDY_IDX AS IDX, 
-			  Aces.dbo.RF_TABLE.RF_IDX, 
-			  Aces.dbo.RF_TABLE.RF_TIME AS RFTIME, 
-			  Aces.dbo.RF_TABLE.ABLATION_START_TIME AS STARTTIME
+( select   Aces.dbo.STUDIES_TABLE.STUDY_IDX, 
+           CAST(CAST(MIN(Aces.dbo.RF_TABLE.ABLATION_START_TIME) AS Datetime)AS Time(0)) AS First_RF,
+       	   CAST(CAST(MAX(Aces.dbo.RF_TABLE.ABLATION_START_TIME) AS Datetime)AS Time(0)) AS Last_RF,
+           SUM(Aces.dbo.RF_TABLE.RF_TIME/1000)/60 AS TotalRF,
+	   AVG(Aces.dbo.RF_TABLE.RF_TIME)/1000 AS MeanRF,
+	   COUNT(Aces.dbo.RF_TABLE.RF_TIME) AS numRF
   from     Aces.dbo.STUDIES_TABLE,
            Aces.dbo.MAPS_TABLE,
 	       Aces.dbo.RF_TABLE
   where    Aces.dbo.STUDIES_TABLE.STUDY_IDX = Aces.dbo.MAPS_TABLE.STUDY_IDX
   and	   Aces.dbo.RF_TABLE.MAP_IDX = Aces.dbo.MAPS_TABLE.MAP_IDX
-) AS RFLIST
-group by IDX
-
-
+  group by Aces.dbo.STUDIES_TABLE.STUDY_IDX
 ) AS RFTime
-ON RFTime.IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
+ON RFTime.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
 LEFT JOIN
 (
 SELECT DISTINCT(Aces.dbo.STUDIES_TABLE.STUDY_IDX), CONFIG_MAIN_TABLE.PROCEDURE_IDX AS ptype,
@@ -110,7 +70,21 @@ AND
  	Aces.dbo.CONFIG_MAIN_TABLE.CONFIG_IDX = Aces.dbo.CONFIG_CONNECTOR_TABLE.CONFIG_IDX
 ) AS Cath
 ON Cath.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
+LEFT JOIN
+( select   Aces.dbo.STUDIES_TABLE.STUDY_IDX, 
+           AVG(Aces.dbo.RF_TABLE.AVERAGE_CONTACT_FORCE) AS CF_MEAN,
+           STDEV(Aces.dbo.RF_TABLE.AVERAGE_CONTACT_FORCE) AS CF_STD
+  from     Aces.dbo.STUDIES_TABLE,
+           Aces.dbo.MAPS_TABLE,
+	   Aces.dbo.RF_TABLE
+  where    Aces.dbo.STUDIES_TABLE.STUDY_IDX = Aces.dbo.MAPS_TABLE.STUDY_IDX
+  and	   Aces.dbo.RF_TABLE.MAP_IDX = Aces.dbo.MAPS_TABLE.MAP_IDX
+  AND    Aces.dbo.RF_TABLE.AVERAGE_CONTACT_FORCE > 0
+  group by Aces.dbo.STUDIES_TABLE.STUDY_IDX
 
+) AS RFForce
+ON RFForce.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
 LEFT JOIN  Aces.dbo.PROCEDURES_TABLE
 on  Aces.dbo.PROCEDURES_TABLE.PROCEDURE_IDX = Cath.ptype
 ORDER BY Date DESC
+

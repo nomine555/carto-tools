@@ -1,5 +1,5 @@
 @echo off
-mode 220, 80
+mode 240, 60
 ::
 :: Mostramos la fecha
 ::

@@ -1,13 +1,15 @@
 SET ANSI_NULLS on
 set QUOTED_IDENTIFIER  ON
 select     top 3             
-	   CONVERT(VARCHAR(10),CAST(CAST(Aces.dbo.STUDIES_TABLE.date AS Datetime) AS Date)) AS Date,                      	   CONVERT(VARCHAR(10),Aces.dbo.STUDIES_TABLE.NOTES) Comments, 
+	   CONVERT(VARCHAR(10),CAST(CAST(Aces.dbo.STUDIES_TABLE.date -2 AS Datetime) AS Date)) AS Date,                      	   
+           CONVERT(VARCHAR(10),Aces.dbo.STUDIES_TABLE.NOTES) Comments, 
            CONVERT(VARCHAR(8),CAST(CAST(Aces.dbo.STUDIES_TABLE.START_TIME AS Datetime) AS Time)) AS Carto_Start,
-           CONVERT(VARCHAR(9),Points.First_Point) AS map_start,           
+           CONVERT(VARCHAR(9),Points.First_Point) AS first_point,           
            CONVERT(VARCHAR(9),RFTime.First_RF) AS rf_start,
            CONVERT(VARCHAR(9),RFTime.Last_RF) AS rf_end,
-	   CONVERT(VARCHAR(9),Points2.Last_Point) AS validation_end,
-	   CONVERT(VARCHAR(9),RFTime.TotalRFTime) AS TotalRFTime,
+	   CONVERT(VARCHAR(9),Points2.Last_Point) AS last_point,
+ 	   CONVERT(VARCHAR(9),maps.end_map) AS carto_end,
+	   CAST(RFTime.TotalRFTime AS DECIMAL(10,2) ) AS TotalRFTime,
 	   CONVERT(VARCHAR(9),RFTime.numRFs) AS numRFs
 from       Aces.dbo.STUDIES_TABLE
 LEFT JOIN       Aces.dbo.SETUP_TABLE
@@ -37,14 +39,22 @@ LEFT JOIN
 ) AS Points2
 ON Points2.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
 LEFT JOIN
-
+( select Aces.dbo.STUDIES_TABLE.STUDY_IDX, 
+	 CAST(CAST(MAX(Aces.dbo.MAPS_TABLE.LAST_MODIFIED) AS Datetime)AS Time(0)) AS end_map   
+from     Aces.dbo.STUDIES_TABLE,
+         Aces.dbo.MAPS_TABLE
+where    Aces.dbo.STUDIES_TABLE.STUDY_IDX = Aces.dbo.MAPS_TABLE.STUDY_IDX
+group by Aces.dbo.STUDIES_TABLE.STUDY_IDX
+) AS maps
+ON maps.STUDY_IDX = Aces.dbo.STUDIES_TABLE.STUDY_IDX
+LEFT JOIN
 (
 SELECT  IDX, 
         CAST(CAST(MIN(STARTTIME) AS Datetime)AS Time(0)) AS First_RF,
         CAST(CAST(MAX(STARTTIME) AS Datetime)AS Time(0)) AS Last_RF,
-        SUM(RFTIME/1000)/60 AS TotalRFTime,
-	     AVG(RFTIME)/1000 AS MeanRFTime,
-	     COUNT(RFTIME) AS numRFs
+        SUM(RFTIME/1000.0)/60 AS TotalRFTime,
+	AVG(RFTIME)/1000.0 AS MeanRFTime,
+	COUNT(RFTIME) AS numRFs
 FROM 
 (
 select DISTINCT 
