@@ -93,7 +93,7 @@ def h(x):
      
 def trayecto(zona, dfn, intento):
     
-    global color
+    global color, distancias
     
     fdist = 0
     
@@ -120,16 +120,23 @@ def trayecto(zona, dfn, intento):
         # En los siguienes nos vamos desplazando hasta que haya un error
         if (intento == 0):
             m,mm = np.where(distancias >= np.amax(distancias))    
+            inicio = m[0]
+            fin    = m[1]          
         else:
-            maximo = intento*np.amax(distancias)/6 + np.amax(distancias)/3
-            distancias_ord = distancias_ord[distancias_ord > maximo]
-            try:
-                m,mm = np.where(distancias == distancias_ord[0])    
-            except:                
-                return False
-                        
-        inicio = m[0]
-        fin    = m[1]                    
+            if (aleatorio): 
+                print("Algoritmo Aleatorio")
+                alea  = distancias.shape[0]
+                inicio = np.random.randint(low=0, high=alea, size=(1,))[0]
+                fin    = np.random.randint(low=0, high=alea, size=(1,))[0]                           
+            else:
+                maximo = intento*np.amax(distancias)/6 + np.amax(distancias)/3
+                distancias_ord = distancias_ord[distancias_ord > maximo]
+                try:
+                    m,mm = np.where(distancias == distancias_ord[0])    
+                except:                
+                    return False
+                inicio = m[0]
+                fin    = m[1]          
     
         # Utilizamos una de las 3 funciones distancia f, q, h. 
         # Elevan a un número muy grande la distancia para evitar pasar por puntos intermedios
@@ -177,12 +184,15 @@ def trayecto(zona, dfn, intento):
         distancias = cdist(puntos, puntos);
     
         # Utilizamos de nuevo las funciones f, q, h
-        if (fdist % 3 == 0):           
+        if (aleatorio):
             distancias = np.vectorize(h)(distancias) 
-        elif(fdist % 3 == 1): 
-            distancias = np.vectorize(g)(distancias)    
         else:
-            distancias = np.vectorize(f)(distancias)     
+            if (fdist % 3 == 0):           
+                distancias = np.vectorize(h)(distancias) 
+            elif(fdist % 3 == 1): 
+                distancias = np.vectorize(g)(distancias)    
+            else:
+                distancias = np.vectorize(f)(distancias)     
     
         # Calculamos el camino
         dist_matrix, predecessors = shortest_path(csgraph=distancias, directed=True, return_predecessors = True, method = 'FW') 
@@ -375,14 +385,14 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
         # Mostramos los datos    
         for zona in elementos:           
             dfx = dfn[dfn['Site'] == zona]
-            '''
+            
             print()
             print(zona)
             print('---------')
             print('Distancia Media ', dfx['Distancia'].mean()) 
             print('Distancia maxima ',dfx['Distancia'].max()) 
             #print('Max Gap:', dfx.loc[dfx['Distancia'] == dfx['Distancia'].max(),'Seq']  )          
-            '''
+            
 
         # Dibujamos los trayectos    
         if (confirm2):        
@@ -423,12 +433,13 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
             question = True;
             zonas_seleccionadas = zonas;
 
-        # Si decideimos procesar esa linea
+        # Si decidimos procesar esa linea
         if question:
             plt.close()
             break
         elif question is None:    
             dflistado = dflistado.append({'directorio' : input_file, 'procesado' : 'R'}, ignore_index=True)
+            copy_tree(dir_paciente, dstdir +  "\\revision\\" + os.path.basename(os.path.normpath(dir_paciente)))
             plt.close()
             print("Marcado para revisión")
             return dfResumen, dfTotal, dfRfs, dflistado       
@@ -525,7 +536,7 @@ def procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado):
 
 def leer_configuracion():
     
-    global rootdir, dstdir, tagindex, tagindexd, Study_Name, segmentos, sql_file, confirm, confirm2, procesar, FTI, resumefile, alldatafile,allrfsfile, procesfiles, subdir, datadir, mapsdir, patientdata;
+    global rootdir, dstdir, tagindex, tagindexd, Study_Name, segmentos, sql_file, confirm, confirm2, procesar, FTI, resumefile, alldatafile,allrfsfile, procesfiles, subdir, datadir, mapsdir, patientdata,aleatorio;
     
     config = configparser.ConfigParser()
     config.read('visitag.ini')
@@ -541,6 +552,11 @@ def leer_configuracion():
         confirm      = True;
     else: 
         confirm      = False;
+        
+    if (config['DEFAULT']['Aleatorio'] == "Si"):
+        aleatorio      = True;
+    else: 
+        aleatorio      = False;
         
     if (config['DEFAULT']['Confirmar2'] == "Si"):
         confirm2      = True;
@@ -656,15 +672,14 @@ if (procesar):
     for dir_paciente in lista_pacientes:
         if (os.path.isfile(dir_paciente + '\\Sites.txt')):
             dfResumen, dfTotal, dfRfs, dflistado = procesa(dir_paciente, dfResumen, dfTotal, dfRfs, dflistado)
-        
-    # Exportamos los datos
-    dfResumen ['file'] = dfResumen['file'].str.replace('\\','')
-    #dfResumen.to_csv(resumefile, sep = ';', decimal=',');
-    dfTotal.to_csv(alldatafile, sep = ';', decimal=',');
-    dfRfs.to_csv(allrfsfile, sep = ';', decimal=',');
-    dflistado.to_csv(procesfiles, sep = ';', decimal=',');
+            # Exportamos los datos            
+            dfTotal.to_csv(alldatafile, sep = ';', decimal=',');
+            dfRfs.to_csv(allrfsfile, sep = ';', decimal=',');
+            dflistado.to_csv(procesfiles, sep = ';', decimal=',');
+            dfResumen ['file'] = dfResumen['file'].str.replace('\\','')
+            dfResumen.to_csv(resumefile, sep = ';', decimal=',');
 
-
+'''        
 # Tenemos archivo SQL
 if(len(sql_file.strip())>0):
     dfsql  = pd.read_fwf(rootdir + "\\" + sql_file, index_col=0,infer_nrows=2,skipfooter=2, engine='python')
@@ -682,6 +697,8 @@ if(len(sql_file.strip())>0):
     dfTT = dfsql.merge(dfResumen,left_on='ID',right_on='file',how='right')
     dfTT.to_csv(resumefile, sep = ';', decimal=',');
     dfsql.to_csv(resumefile+"-sql.csv", sep = ';', decimal=',');
+
+'''
     
 ## Funciones no utilizadas para el futuro. 
 '''
